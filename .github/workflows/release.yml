@@ -1,0 +1,62 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform.os }} ${{ matrix.platform.version }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: [ "amd64", "arm64" ]
+        platform:
+          - os: openeuler
+            version: "20.03"
+          - os: openeuler
+            version: "22.03"
+          - os: ubuntu
+            version: "18.04"
+          - os: ubuntu
+            version: "20.04"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: extractions/setup-just@v3
+
+      - name: Build Package
+        run: just ${{ matrix.platform.os }} pkg ${{ matrix.arch }} ${{ matrix.platform.version }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ matrix.platform.os }}-${{ matrix.platform.version }}-${{ matrix.arch }}
+          path: target/
+          retention-days: 1
+
+  publish:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          pattern: build-artifacts-*
+          merge-multiple: true
+
+      - name: Automatic Release
+        uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "latest"
+          prerelease: true
+          title: "Development Build"
+          files: |
+            all-artifacts/**
